@@ -14,6 +14,21 @@ You'll need create a `hosts` file describing which servers this script will run,
 
 `localhost:2222`
 
+Dev Branch
+----------
+
+On dev branch you can find more modules from early subutai version. This `subutai.py` is exactly the same subimitted to ansible upstream, with few modules and merged to one single file.
+
+Using on pre-production enviroment
+----------------------------------
+
+Is possible try this module using our fork with module installed running on 2.6 ansible using the following ansible fork: 
+
+https://github.com/liquuid/ansible
+
+Generating Documentation
+------------------------
+
 To generate Markdown documentation run:
 
 `./docgen.py`
