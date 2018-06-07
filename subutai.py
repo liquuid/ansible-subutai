@@ -137,7 +137,22 @@ options:
   file:
     description:
       - Pem certificate file.
-
+  child:
+    description:
+      - Name of child container.
+    required: true
+  env:
+    description:
+      - Set environment id for container.
+  token:
+    description:
+      - Token to verify with subutai's Bazaar.
+  clone:
+    description:
+      - Name of template to be cloned
+  secret:
+    description:
+      - Console secret
 author:
   - "Fernando Silva (@liquuid)"
 '''
@@ -263,17 +278,22 @@ EXAMPLES = '''
 
 - name: delete domain example.com
   subutai:
-    conetwork: proxy
+    network: proxy
     state: absent
     vlan: 100
     domain: example.com
 
 - name: delete host 10.10.0.20
   subutai:
-    conetwork: proxy
+    network: proxy
     state: absent
     vlan: 100
     host: 10.10.0.20
+
+- name: clone nginx container
+  subutai:
+    clone: nginx
+    child: ng-proxy
 '''
 
 RETURN = '''
@@ -298,6 +318,11 @@ class Container():
         # parameters
         self.module_args = dict(
             name=dict(type='str', required=False),
+            clone=dict(type='str', required=False),
+            child=dict(type='str', required=False),
+            env=dict(type='str', required=False),
+            token=dict(type='str', required=False),
+            secret=dict(type='str', required=False),
             template=dict(type='bool', required=False),
             network=dict(type='str', choices=[
                          'tunnel', 'map', 'vxlan', 'proxy']),
@@ -336,11 +361,12 @@ class Container():
         self.module = AnsibleModule(
             argument_spec=self.module_args,
             supports_check_mode=True,
-            required_one_of=[['name', 'network']],
+            required_one_of=[['name', 'network', 'clone']],
             required_if=[
                 ["network", "tunnel", ["ipaddr"]],
                 ["network", "map", ["protocol"]],
                 ["network", "vxlan", ["vxlan"]],
+                ["clone", "child"],
             ]
         )
 
@@ -388,6 +414,9 @@ class Container():
 
         if self.module.params['network'] == 'proxy':
             self._proxy()
+
+        if self.module.params['clone']:
+            self._clone()
 
     def _start(self):
         if self._is_running():
@@ -722,6 +751,45 @@ class Container():
                     self._return_fail("OS Error " + str(e))
         else:
             self._return_fail(err)
+
+    def _clone(self):
+        if self.module.params['env']:
+            self.args.append("--env")
+            self.args.append(self.module.params['env'])
+
+        if self.module.params['ipaddr']:
+            self.args.append("--ipaddr")
+            self.args.append(self.module.params['ipaddr'])
+
+        if self.module.params['token']:
+            self.args.append("--token")
+            self.args.append(self.module.params['token'])
+
+        if self.module.params['secret']:
+            self.args.append("--secret")
+            self.args.append(self.module.params['secret'])
+
+        try:
+            err = subprocess.Popen(["/usr/bin/subutai", "clone",self.module.params['clone'],
+                                    self.module.params['child']] + self.args, 
+                                    stderr=subprocess.PIPE).stderr.read()
+            if err:
+                if "already exists" in err:
+                    self.result['changed'] = False
+                    self._exit()
+                else:
+                    self.result['stderr'] = err
+                    self._return_fail(err)
+            else:
+                self.result['changed'] = True
+                self._exit()
+        except OSError as e:
+            if "[Errno 2] No such file or directory" in str(e):
+                self.result['changed'] = False
+                self._return_fail("Subutai is not installed")
+            else:
+                self.result['changed'] = False
+                self._return_fail("OS Error " + str(e))
 
     def _exists_vxlan(self):
         try:
